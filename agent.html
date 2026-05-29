@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Фея русского языка — Помощник</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --purple: #9b5de5;
+  --purple-light: #c77dff;
+  --purple-dim: rgba(155,93,229,0.12);
+  --purple-line: rgba(155,93,229,0.28);
+  --gold: #f4c542;
+  --bg: #0c0717;
+  --card: #130d22;
+  --white: #f5f0ff;
+  --gray: #9080b0;
+}
+
+body {
+  background: var(--bg);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Manrope', sans-serif;
+  padding: 24px 16px;
+}
+
+/* BG effects */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 45% at 15% 15%, rgba(155,93,229,0.13) 0%, transparent 65%),
+    radial-gradient(ellipse 35% 35% at 85% 75%, rgba(199,125,255,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 25% 30% at 50% 50%, rgba(244,197,66,0.04) 0%, transparent 55%);
+}
+
+/* Stars */
+#stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+
+.widget {
+  width: 100%; max-width: 440px;
+  position: relative; z-index: 10;
+  border-radius: 22px; overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--purple-line);
+  box-shadow: 0 0 0 1px rgba(155,93,229,0.08), 0 0 50px rgba(155,93,229,0.12), 0 40px 80px rgba(0,0,0,0.5);
+}
+.widget::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--purple-light), var(--gold), var(--purple-light), transparent);
+}
+
+/* Header */
+.hdr {
+  padding: 16px 20px;
+  background: rgba(155,93,229,0.07);
+  border-bottom: 1px solid var(--purple-line);
+  display: flex; align-items: center; gap: 13px;
+}
+.hdr-av {
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #9b5de5, #f4c542);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 0 18px rgba(155,93,229,0.45);
+  position: relative;
+}
+.hdr-av::after {
+  content: '';
+  position: absolute; inset: -3px; border-radius: 50%;
+  border: 1px solid rgba(155,93,229,0.35);
+  animation: ringpulse 2.5s infinite;
+}
+@keyframes ringpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.2;transform:scale(1.08)} }
+
+.hdr-info {}
+.hdr-name { font-size: 14px; font-weight: 700; color: var(--white); margin-bottom: 2px; }
+.hdr-sub { font-size: 10px; color: var(--purple-light); letter-spacing: 1.5px; text-transform: uppercase; }
+.hdr-status {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: #7fd88a; margin-top: 3px;
+}
+.hdr-status::before {
+  content: ''; width: 6px; height: 6px;
+  background: #7fd88a; border-radius: 50%;
+  animation: blink 2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Messages */
+.msgs {
+  padding: 18px 16px; height: 420px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  scroll-behavior: smooth;
+}
+.msgs::-webkit-scrollbar{width:3px}
+.msgs::-webkit-scrollbar-thumb{background:rgba(155,93,229,0.25);border-radius:2px}
+
+.msg { display: flex; gap: 8px; align-items: flex-end; animation: msgin 0.3s ease; }
+.msg.u { flex-direction: row-reverse; }
+@keyframes msgin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+.msg-av {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.msg-av.bot { background: linear-gradient(135deg, #9b5de5, #f4c542); box-shadow: 0 0 8px rgba(155,93,229,0.35); }
+.msg-av.usr { background: rgba(255,255,255,0.06); }
+
+.bbl {
+  max-width: 83%; padding: 11px 15px;
+  font-size: 13.5px; line-height: 1.62; border-radius: 17px;
+}
+.bbl.bot {
+  background: rgba(155,93,229,0.11);
+  border: 1px solid rgba(155,93,229,0.22);
+  color: #ede5ff; border-bottom-left-radius: 3px;
+}
+.bbl.usr {
+  background: rgba(244,197,66,0.11);
+  border: 1px solid rgba(244,197,66,0.22);
+  color: #fff8e0; border-bottom-right-radius: 3px;
+  margin-left: auto;
+}
+
+/* Typing */
+.typing-wrap { display: flex; gap: 8px; align-items: flex-end; }
+.typing {
+  padding: 11px 15px;
+  background: rgba(155,93,229,0.11);
+  border: 1px solid rgba(155,93,229,0.22);
+  border-radius: 17px; border-bottom-left-radius: 3px;
+  display: flex; gap: 5px; align-items: center;
+}
+.typing span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--purple-light); animation: tp 1.4s infinite;
+}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes tp{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-5px);opacity:1}}
+
+/* Quick replies */
+.qrs {
+  padding: 0 16px 12px;
+  display: flex; flex-wrap: wrap; gap: 7px;
+}
+.qr {
+  border: 1px solid var(--purple-line);
+  color: var(--purple-light);
+  background: var(--purple-dim);
+  padding: 7px 13px; border-radius: 18px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.qr:hover {
+  background: rgba(155,93,229,0.22);
+  border-color: var(--purple-light);
+  color: var(--white); transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(155,93,229,0.25);
+}
+
+/* Input */
+.inp-wrap {
+  padding: 12px 14px;
+  border-top: 1px solid var(--purple-line);
+  display: flex; gap: 9px; align-items: center;
+}
+.inp {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--purple-line);
+  border-radius: 22px; padding: 10px 16px;
+  color: var(--white); font-family: 'Manrope', sans-serif; font-size: 13.5px;
+  outline: none; transition: border-color 0.3s, box-shadow 0.3s;
+}
+.inp::placeholder{color:rgba(155,93,229,0.35)}
+.inp:focus{border-color:var(--purple-light);box-shadow:0 0 0 3px rgba(155,93,229,0.08)}
+.inp:disabled{opacity:0.5}
+
+.send-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--purple), #7b2fff);
+  border: none; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 14px rgba(155,93,229,0.4);
+}
+.send-btn:hover:not(:disabled){transform:scale(1.08);box-shadow:0 0 22px rgba(155,93,229,0.6)}
+.send-btn:disabled{opacity:0.5;cursor:not-allowed}
+.send-btn svg{width:17px;height:17px;fill:white}
+
+.footer {
+  text-align: center; padding: 9px 16px 13px;
+  font-size: 11px; color: rgba(155,93,229,0.35); letter-spacing: 0.5px;
+  border-top: 1px solid rgba(155,93,229,0.08);
+}
+.footer a{color:rgba(155,93,229,0.55);text-decoration:none}
+
+/* Error */
+.err-msg {
+  background: rgba(220,80,80,0.12);
+  border: 1px solid rgba(220,80,80,0.25);
+  color: #ffb0b0; padding: 10px 14px;
+  border-radius: 10px; font-size: 13px;
+  margin: 0 16px 12px;
+}
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+
+<div class="widget">
+  <div class="hdr">
+    <div class="hdr-av">🧚</div>
+    <div class="hdr-info">
+      <div class="hdr-name">Фея русского языка</div>
+      <div class="hdr-sub">помощник Ангелины</div>
+      <div class="hdr-status">всегда онлайн</div>
+    </div>
+  </div>
+
+  <div class="msgs" id="msgs">
+    <div class="msg">
+      <div class="msg-av bot">🧚</div>
+      <div class="bbl bot">Здравствуйте. Я помощник Ангелины — Феи русского языка.<br><br>Расскажу об играх, курсах и материалах для уроков. Помогу выбрать подходящее для вас или ваших учеников.<br><br>Задайте вопрос или выберите тему ниже.</div>
+    </div>
+  </div>
+
+  <div class="qrs" id="qrs">
+    <span class="qr" onclick="qrSend(this)">Игры для уроков</span>
+    <span class="qr" onclick="qrSend(this)">Курсы ОГЭ и ЕГЭ</span>
+    <span class="qr" onclick="qrSend(this)">Для учителей</span>
+    <span class="qr" onclick="qrSend(this)">Цены</span>
+    <span class="qr" onclick="qrSend(this)">Можно редактировать игры?</span>
+    <span class="qr" onclick="qrSend(this)">Нужна ли подписка?</span>
+    <span class="qr" onclick="qrSend(this)">Игра под заказ</span>
+    <span class="qr" onclick="qrSend(this)">Как оплатить?</span>
+  </div>
+
+  <div class="inp-wrap">
+    <input class="inp" id="inp" placeholder="Напишите вопрос..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}">
+    <button class="send-btn" id="sendBtn" onclick="sendMsg()">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
+  </div>
+
+  <div class="footer">
+    AI-помощник создан <a href="https://pervyyii.ru" target="_blank">Первый ИИ</a> · pervyyii.ru
+  </div>
+</div>
+
+<script>
+// Stars
+const starsEl = document.getElementById('stars');
+for (let i = 0; i < 70; i++) {
+  const s = document.createElement('div');
+  const size = Math.random() * 1.8 + 0.4;
+  s.style.cssText = `
+    position:absolute;
+    left:${Math.random()*100}%;top:${Math.random()*100}%;
+    width:${size}px;height:${size}px;
+    background:white;border-radius:50%;
+    animation:tw ${2+Math.random()*3}s infinite ${Math.random()*4}s;
+    opacity:0;
+  `;
+  starsEl.appendChild(s);
+}
+const st = document.createElement('style');
+st.textContent = '@keyframes tw{0%,100%{opacity:0.08;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}';
+document.head.appendChild(st);
+
+// System prompt — всё что агент знает об Ангелине
+const SYSTEM = `Ты — умный помощник Ангелины, преподавателя русского языка, известной как "Фея русского языка". 
+Отвечай серьёзно, по делу, с правильной пунктуацией. Без лишних эмодзи — максимум 1-2 в сообщении если уместно. 
+Отвечай только на русском языке.
+
+ИНФОРМАЦИЯ ОБ АНГЕЛИНЕ:
+- Преподаватель русского языка, магистр МГУ, эксперт ЕГЭ, 8 лет опыта
+- Первая геймифицировала обучение русскому языку
+- Автор курсов для учителей и учеников
+- Более 8000 подписчиков в Instagram (@russiangel)
+- Сайт: russiangel.ru
+- Telegram для связи и покупок: @russiangel_me
+- WhatsApp: +7 969 044-43-33
+
+ПРОДУКТЫ:
+
+1. ИГРЫ ДЛЯ УРОКОВ (для учителей):
+- Игры в PowerPoint — работают без интернета, без подписок, редактируемые
+- Игры в Genially — онлайн, для использования достаточен бесплатный аккаунт
+- Темы игр: Гарри Поттер, Marvel, Уэнсдей, Эйфория, вампиры и другие
+- Все игры рассчитаны на 8–11 классы
+- Задания к каждой игре можно посмотреть в видеообзорах на сайте
+- ВСЕ игры можно редактировать — передаются в редактируемом формате
+- Ангелина создаёт игры на заказ с нуля — от 2500 руб.
+- Также может отредактировать готовую игру под конкретный запрос
+- Для выбора подходящей игры под конкретный класс/тему Ангелина помогает лично в TG
+
+2. ЦЕНЫ НА ИГРЫ:
+- Отдельные игры: от 500 руб. и от 1000 руб. за штуку
+- Пакет "Сундучок" (6 игр на выбор): 3800 руб.
+- Пакет "Сокровище": 9800 руб.
+- Все материалы оптом (40+ штук): 24500 руб.
+- Игра на заказ с нуля: от 2500 руб.
+- Авторские расширения Genially: 2500 руб.
+
+3. КУРСЫ ДЛЯ УЧЕНИКОВ:
+- Курс ОГЭ по русскому: 3500 руб.
+- Курс по сочинению ЕГЭ: 3500 руб.
+- Аргументы к итоговому сочинению: 2500 руб.
+- Рабочие тетради ОГЭ (в игровом формате): от 1300 руб.
+
+4. КУРСЫ ДЛЯ УЧИТЕЛЕЙ:
+- "Как создавать игры в PowerPoint": 3500 руб.
+- "Курс по Genially": 3500 руб.
+- "Курс ОГЭ: как готовить детей": 3500 руб.
+- "Канал педагога" (как вести и монетизировать): 3000 руб.
+- Мастер-класс "ИИ для педагога": 2000 руб.
+
+5. РЕПЕТИТОРСТВО:
+- Индивидуальные занятия: 3000–5000 руб./час
+- Онлайн и очно в Москве
+- Специализация: ОГЭ и ЕГЭ по русскому языку
+
+6. КАК ОПЛАТИТЬ:
+- Написать Ангелине в Telegram: @russiangel_me
+- Она пришлёт реквизиты для оплаты
+- Все материалы также на сайте russiangel.ru
+
+ВАЖНЫЕ ПРАВИЛА:
+- Если спрашивают про оплату — объясни что нужно написать в TG @russiangel_me
+- Если спрашивают про подписки — объясни что никаких подписок не нужно
+- Если спрашивают какая игра подойдёт для конкретного класса — скажи что все игры для 8-11 классов, посоветуй посмотреть видеообзоры и написать Ангелине лично
+- Всегда в конце указывай контакт @russiangel_me если вопрос требует личного обсуждения
+- Не придумывай информацию которой нет выше
+- Если вопрос не по теме — вежливо перенаправь к основным темам`;
+
+const history = [];
+const msgsEl = document.getElementById('msgs');
+const inpEl = document.getElementById('inp');
+const btnEl = document.getElementById('sendBtn');
+
+function addMsg(text, isUser) {
+  const d = document.createElement('div');
+  d.className = `msg${isUser?' u':''}`;
+  const formatted = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br>');
+  d.innerHTML = `
+    <div class="msg-av ${isUser?'usr':'bot'}">${isUser?'👤':'🧚'}</div>
+    <div class="bbl ${isUser?'usr':'bot'}">${formatted}</div>
+  `;
+  msgsEl.appendChild(d);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return d;
+}
+
+function showTyping() {
+  const t = document.createElement('div');
+  t.className = 'typing-wrap'; t.id = 'typing';
+  t.innerHTML = `<div class="msg-av bot">🧚</div><div class="typing"><span></span><span></span><span></span></div>`;
+  msgsEl.appendChild(t);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+function hideTyping() { document.getElementById('typing')?.remove(); }
+
+function setLoading(on) {
+  inpEl.disabled = on;
+  btnEl.disabled = on;
+}
+
+async function sendMsg() {
+  const text = inpEl.value.trim();
+  if (!text) return;
+  inpEl.value = '';
+  document.getElementById('qrs').style.display = 'none';
+
+  addMsg(text, true);
+  history.push({ role: 'user', content: text });
+
+  setLoading(true);
+  showTyping();
+
+  try {
+    // ЗАМЕНИ НА СВОЙ URL ПОСЛЕ ДЕПЛОЯ НА RAILWAY:
+    const BACKEND_URL = 'https://ТВОЙ-ПРОЕКТ.railway.app/chat';
+
+    const res = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: history })
+    });
+
+    const data = await res.json();
+    hideTyping();
+
+    if (data.error) {
+      addMsg('Произошла ошибка. Напишите Ангелине напрямую: @russiangel_me', false);
+    } else {
+      history.push({ role: 'assistant', content: data.reply });
+      addMsg(data.reply, false);
+    }
+  } catch (e) {
+    hideTyping();
+    addMsg('Не удалось получить ответ. Напишите Ангелине напрямую: @russiangel_me', false);
+  }
+
+  setLoading(false);
+}
+
+function qrSend(el) {
+  inpEl.value = el.textContent.trim();
+  document.getElementById('qrs').style.display = 'none';
+  sendMsg();
+}
+</script>
+</body>
+</html>
