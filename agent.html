@@ -391,8 +391,7 @@ async function sendMsg() {
   showTyping();
 
   try {
-    // ЗАМЕНИ НА СВОЙ URL ПОСЛЕ ДЕПЛОЯ НА RAILWAY:
-    const BACKEND_URL = 'https://ТВОЙ-ПРОЕКТ.railway.app/chat';
+    const BACKEND_URL = 'https://web-production-496a1.up.railway.app/chat';
 
     const res = await fetch(BACKEND_URL, {
       method: 'POST',
