@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Фея русского языка — Аналитика</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0a08;
+  --card: #131311;
+  --line: rgba(201,168,76,0.18);
+  --line-soft: rgba(255,255,255,0.06);
+  --text: #f0ece2;
+  --text-dim: #a09c90;
+  --text-mute: #6e6a60;
+  --gold: #c9a84c;
+  --gold-hover: #e2be66;
+  --green: #6ea96a;
+  --red: #c25a4e;
+}
+html, body { background: var(--bg); color: var(--text); font-family: 'Manrope', system-ui, sans-serif; min-height: 100vh; }
+
+.wrap { max-width: 1500px; margin: 0 auto; padding: 28px 32px 80px; }
+
+.head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 22px; border-bottom: 1px solid var(--line);
+}
+.head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
+.head .sub { color: var(--gold); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; }
+.head .right { display: flex; gap: 18px; align-items: center; font-size: 12px; color: var(--text-dim); }
+
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 24px 0 18px; }
+.stat {
+  background: var(--card); border: 1px solid var(--line-soft); padding: 18px 20px;
+}
+.stat-l { font-size: 10px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; }
+.stat-n { font-family: 'Manrope', serif; font-size: 32px; color: var(--gold); font-weight: 600; line-height: 1; }
+
+.filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 14px; }
+.filter, .search {
+  background: var(--card); color: var(--text); border: 1px solid var(--line-soft);
+  padding: 8px 12px; font-size: 13px; font-family: inherit; border-radius: 2px;
+  outline: none;
+}
+.search { flex: 1; min-width: 240px; }
+.filter { cursor: pointer; }
+.filter:hover, .search:focus { border-color: var(--line); }
+
+table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line-soft); }
+thead { background: rgba(201,168,76,0.04); }
+th, td { padding: 10px 14px; text-align: left; font-size: 13px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+th { color: var(--gold); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+tbody tr { cursor: pointer; transition: background 0.15s; }
+tbody tr:hover { background: rgba(201,168,76,0.04); }
+
+.tag {
+  display: inline-block; padding: 2px 8px; font-size: 11px; letter-spacing: 0.3px;
+  border: 1px solid var(--line); color: var(--text-dim); border-radius: 2px;
+}
+.tag.lead { color: var(--green); border-color: rgba(110,169,106,0.4); background: rgba(110,169,106,0.08); }
+.tag.gold { color: var(--gold); border-color: rgba(201,168,76,0.3); }
+.dim { color: var(--text-mute); }
+.mono { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; color: var(--text-dim); }
+.empty { color: var(--text-mute); }
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none;
+  align-items: center; justify-content: center; z-index: 100; padding: 24px;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--card); border: 1px solid var(--line); max-width: 700px; width: 100%;
+  max-height: 80vh; display: flex; flex-direction: column; position: relative;
+  border-radius: 2px; overflow: hidden;
+}
+.modal::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.modal-head { padding: 18px 22px; border-bottom: 1px solid var(--line-soft); display: flex; justify-content: space-between; align-items: center; }
+.modal-head h2 { font-size: 14px; font-weight: 600; }
+.modal-head .close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 22px; line-height: 1; }
+.modal-meta { padding: 12px 22px; border-bottom: 1px solid var(--line-soft); font-size: 12px; color: var(--text-dim); display: flex; gap: 18px; flex-wrap: wrap; }
+.modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
+.msg-block { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px dashed var(--line-soft); }
+.msg-block:last-child { border-bottom: none; }
+.msg-role { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; }
+.msg-role.user { color: var(--gold); }
+.msg-role.assistant { color: var(--text-dim); }
+.msg-text { font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.msg-time { font-size: 10px; color: var(--text-mute); margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  th.hide-sm, td.hide-sm { display: none; }
+  .wrap { padding: 18px 14px 80px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <div class="sub">Аналитика</div>
+      <h1>Фея русского языка · помощник на сайте</h1>
+    </div>
+    <div class="right">
+      <a href="#" id="tg-status" onclick="openSubs(event)" style="color:var(--gold); text-decoration:none; cursor:pointer;">…</a>
+      <span id="last-refresh"></span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-l">Всего диалогов</div><div class="stat-n" id="s-total">—</div></div>
+    <div class="stat"><div class="stat-l">За сегодня</div><div class="stat-n" id="s-today">—</div></div>
+    <div class="stat"><div class="stat-l">За неделю</div><div class="stat-n" id="s-week">—</div></div>
+    <div class="stat"><div class="stat-l">Лидов всего</div><div class="stat-n" id="s-leads">—</div></div>
+    <div class="stat"><div class="stat-l">Конверсия</div><div class="stat-n" id="s-conv">—</div></div>
+  </div>
+
+  <div class="filters">
+    <input class="search" id="search" placeholder="Поиск по имени, контакту, ip, тексту…">
+    <select class="filter" id="f-niche">
+      <option value="">Все типы</option>
+    </select>
+    <select class="filter" id="f-lead">
+      <option value="">Все диалоги</option>
+      <option value="yes">Только с лидом</option>
+      <option value="no">Без лида</option>
+    </select>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Кто</th>
+        <th>Интерес</th>
+        <th>Сообщений</th>
+        <th>Лид</th>
+        <th class="hide-sm">Контакт</th>
+        <th class="hide-sm">IP</th>
+        <th>Кратко</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="8" class="empty" style="text-align:center; padding:30px;">загрузка…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Диалог</h2>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-meta" id="modal-meta"></div>
+    <div class="modal-body" id="modal-body">загрузка…</div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-subs-bg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Подписчики Telegram</h2>
+      <button class="close" onclick="closeSubs()">×</button>
+    </div>
+    <div class="modal-body" id="modal-subs-body">загрузка…</div>
+  </div>
+</div>
+
+<script>
+let DATA = { sessions: [], stats: {}, telegram_subscribers: 0 };
+
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+  if (isToday) return `сегодня ${time}`;
+  return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'short'}) + ` ${time}`;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load() {
+  try {
+    const res = await fetch('/admin/data', { credentials: 'include' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DATA = await res.json();
+    renderStats();
+    populateNicheFilter();
+    render();
+    document.getElementById('tg-status').textContent =
+      `TG подписчиков: ${DATA.telegram_subscribers}`;
+    document.getElementById('last-refresh').textContent =
+      'обновлено ' + new Date().toLocaleTimeString('ru-RU');
+  } catch (e) {
+    document.getElementById('tbody').innerHTML =
+      `<tr><td colspan="8" class="empty" style="text-align:center; padding:30px;">Ошибка загрузки: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderStats() {
+  const s = DATA.stats || {};
+  document.getElementById('s-total').textContent = s.total ?? 0;
+  document.getElementById('s-today').textContent = s.today ?? 0;
+  document.getElementById('s-week').textContent = s.week ?? 0;
+  document.getElementById('s-leads').textContent = s.leads ?? 0;
+  const conv = s.total > 0 ? Math.round((s.leads / s.total) * 100) : 0;
+  document.getElementById('s-conv').textContent = conv + '%';
+}
+
+function populateNicheFilter() {
+  const sel = document.getElementById('f-niche');
+  const niches = new Set();
+  DATA.sessions.forEach(s => { if (s.business_niche) niches.add(s.business_niche); });
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Все типы</option>' +
+    [...niches].sort().map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  sel.value = current;
+}
+
+function getFiltered() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const niche = document.getElementById('f-niche').value;
+  const lead = document.getElementById('f-lead').value;
+  return DATA.sessions.filter(s => {
+    if (niche && s.business_niche !== niche) return false;
+    if (lead === 'yes' && !s.has_lead) return false;
+    if (lead === 'no' && s.has_lead) return false;
+    if (q) {
+      const hay = [s.lead_name, s.lead_contact, s.ip, s.intent_summary, s.business_niche, s.referrer].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  const rows = getFiltered();
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty" style="text-align:center; padding:30px;">ничего не найдено</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(s => `
+    <tr onclick="openSession('${escapeHtml(s.session_id)}')">
+      <td><span class="mono">${escapeHtml(fmtDate(s.created_at))}</span></td>
+      <td>${s.business_niche ? `<span class="tag">${escapeHtml(s.business_niche)}</span>` : '<span class="dim">—</span>'}</td>
+      <td>${s.tariff_interest && s.tariff_interest !== 'не определено' ? `<span class="tag gold">${escapeHtml(s.tariff_interest)}</span>` : '<span class="dim">—</span>'}</td>
+      <td><span class="mono">${s.msg_count || 0}</span></td>
+      <td>${s.has_lead ? `<span class="tag lead">✓ ${escapeHtml(s.lead_name || 'лид')}</span>` : '<span class="dim">—</span>'}</td>
+      <td class="hide-sm"><span class="mono">${escapeHtml(s.lead_contact || '—')}</span></td>
+      <td class="hide-sm"><span class="mono">${escapeHtml(s.ip || '—')}</span></td>
+      <td>${escapeHtml(s.intent_summary ? s.intent_summary.slice(0,120) : '—')}</td>
+    </tr>
+  `).join('');
+}
+
+async function openSession(sid) {
+  const s = DATA.sessions.find(x => x.session_id === sid);
+  const meta = document.getElementById('modal-meta');
+  meta.innerHTML = [
+    `<span>${escapeHtml(fmtDate(s?.created_at))}</span>`,
+    s?.business_niche ? `<span>Сфера: <strong>${escapeHtml(s.business_niche)}</strong></span>` : '',
+    s?.has_lead ? `<span class="tag lead">${escapeHtml(s.lead_name || '')} · ${escapeHtml(s.lead_contact || '')}</span>` : '',
+    s?.referrer ? `<span>Откуда: <span class="mono">${escapeHtml(s.referrer)}</span></span>` : '',
+    s?.ip ? `<span>IP: <span class="mono">${escapeHtml(s.ip)}</span></span>` : '',
+  ].filter(Boolean).join('');
+  document.getElementById('modal-bg').classList.add('open');
+  document.getElementById('modal-body').innerHTML = 'загрузка…';
+  try {
+    const res = await fetch('/admin/session/' + encodeURIComponent(sid), { credentials: 'include' });
+    const msgs = await res.json();
+    if (!Array.isArray(msgs) || msgs.length === 0) {
+      document.getElementById('modal-body').innerHTML = '<div class="empty">сообщений нет</div>';
+      return;
+    }
+    document.getElementById('modal-body').innerHTML = msgs.map(m => `
+      <div class="msg-block">
+        <div class="msg-role ${m.role}">${m.role === 'user' ? '🧑 Посетитель' : '🤖 Агент'}</div>
+        <div class="msg-text">${escapeHtml(m.content)}</div>
+        <div class="msg-time">${escapeHtml(fmtDate(m.created_at))}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('modal-body').innerHTML = '<div class="empty">не удалось загрузить</div>';
+  }
+}
+
+function closeModal() { document.getElementById('modal-bg').classList.remove('open'); }
+document.getElementById('modal-bg').addEventListener('click', e => {
+  if (e.target.id === 'modal-bg') closeModal();
+});
+
+function openSubs(e) {
+  if (e) e.preventDefault();
+  document.getElementById('modal-subs-bg').classList.add('open');
+  renderSubs();
+}
+function closeSubs() { document.getElementById('modal-subs-bg').classList.remove('open'); }
+document.getElementById('modal-subs-bg').addEventListener('click', e => {
+  if (e.target.id === 'modal-subs-bg') closeSubs();
+});
+
+function renderSubs() {
+  const subs = DATA.subscribers || [];
+  const body = document.getElementById('modal-subs-body');
+  if (subs.length === 0) {
+    body.innerHTML = '<div class="empty">пока никто не подписан</div>';
+    return;
+  }
+  body.innerHTML = `
+    <table style="border:none;">
+      <thead><tr><th>Имя</th><th>Username</th><th>Когда</th><th></th></tr></thead>
+      <tbody>
+        ${subs.map(s => `
+          <tr>
+            <td>${escapeHtml(s.first_name || '—')}</td>
+            <td><span class="mono">${s.username ? '@' + escapeHtml(s.username) : '—'}</span></td>
+            <td><span class="mono">${escapeHtml(fmtDate(s.subscribed_at))}</span></td>
+            <td style="text-align:right;">
+              <button class="filter" style="color:var(--red); border-color:rgba(194,90,78,0.3);"
+                onclick="unsubscribe('${escapeHtml(s.chat_id)}', '${escapeHtml(s.first_name || s.username || s.chat_id)}')">
+                отписать
+              </button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function unsubscribe(chatId, label) {
+  if (!confirm('Отписать ' + label + '?')) return;
+  try {
+    const res = await fetch('/admin/subscriber/' + encodeURIComponent(chatId), {
+      method: 'DELETE', credentials: 'include',
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    await load();
+    renderSubs();
+  } catch (e) {
+    alert('Не удалось: ' + e.message);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeSubs(); }
+});
+
+['search','f-niche','f-lead'].forEach(id => {
+  document.getElementById(id).addEventListener('input', render);
+});
+
+load();
+setInterval(load, 60_000);  // auto-refresh every minute
+</script>
+</body>
+</html>
