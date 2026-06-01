@@ -110,7 +110,7 @@ tbody tr:hover { background: rgba(201,168,76,0.04); }
       <h1>Фея русского языка · помощник на сайте</h1>
     </div>
     <div class="right">
-      <a href="#" id="tg-status" onclick="openSubs(event)" style="color:var(--gold); text-decoration:none; cursor:pointer;">…</a>
+      <span style="color:var(--text-mute); font-size:11px;">уведомления → @pervyyii_leads_bot</span>
       <span id="last-refresh"></span>
     </div>
   </div>
@@ -201,8 +201,6 @@ async function load() {
     renderStats();
     populateNicheFilter();
     render();
-    document.getElementById('tg-status').textContent =
-      `TG подписчиков: ${DATA.telegram_subscribers}`;
     document.getElementById('last-refresh').textContent =
       'обновлено ' + new Date().toLocaleTimeString('ru-RU');
   } catch (e) {

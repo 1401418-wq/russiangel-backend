@@ -22,9 +22,10 @@ app.add_middleware(
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
-TELEGRAM_SUBSCRIBE_CODE = os.environ.get("TELEGRAM_SUBSCRIBE_CODE", "")
+# Family-wide leads bot is hosted by pervyyii-backend. We POST lead notifications
+# there and pervyyii fans them out to all subscribers via Telegram.
+BROADCAST_URL = os.environ.get("BROADCAST_URL", "")
+BROADCAST_SECRET = os.environ.get("BROADCAST_SECRET", "")
 
 SYSTEM = """Ты — умный помощник Ангелины, преподавателя русского языка, известной как "Фея русского языка".
 Отвечай серьёзно, по делу, с правильной пунктуацией. Без лишних эмодзи — максимум 1-2 в сообщении если уместно.
@@ -119,13 +120,6 @@ CREATE TABLE IF NOT EXISTS messages (
     cache_read INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS telegram_subscribers (
-    chat_id BIGINT PRIMARY KEY,
-    username TEXT,
-    first_name TEXT,
-    subscribed_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_lead ON sessions(has_lead) WHERE has_lead = TRUE;
@@ -157,80 +151,22 @@ async def shutdown() -> None:
         await pool.close()
 
 
-# ─────────────────── Telegram ───────────────────
+# ─────────────────── Broadcast to family bot ───────────────────
 
-async def tg_send(text: str) -> None:
-    if not (TELEGRAM_BOT_TOKEN and pool):
-        return
-    try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT chat_id FROM telegram_subscribers")
-        if not rows:
-            return
-        async with httpx.AsyncClient(timeout=10) as client:
-            for r in rows:
-                try:
-                    await client.post(
-                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                        json={"chat_id": r["chat_id"], "text": text, "parse_mode": "HTML"},
-                    )
-                except Exception as e:
-                    print(f"[tg] send to {r['chat_id']} failed: {e}")
-    except Exception as e:
-        print(f"[tg] tg_send failed: {e}")
-
-
-async def _tg_send_to(chat_id: int, text: str) -> None:
-    if not TELEGRAM_BOT_TOKEN:
+async def broadcast_lead(payload: dict) -> None:
+    """Send a lead notification to the family-wide bot hosted at BROADCAST_URL.
+    Fire-and-forget; never raises."""
+    if not (BROADCAST_URL and BROADCAST_SECRET):
         return
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": text},
+                BROADCAST_URL,
+                json=payload,
+                headers={"X-Broadcast-Secret": BROADCAST_SECRET},
             )
     except Exception as e:
-        print(f"[tg] direct send failed: {e}")
-
-
-@app.post("/telegram/webhook/{secret}")
-async def telegram_webhook(secret: str, request: Request):
-    if not TELEGRAM_WEBHOOK_SECRET or not secrets.compare_digest(secret, TELEGRAM_WEBHOOK_SECRET):
-        raise HTTPException(404)
-    if not pool:
-        return {"ok": True}
-    update = await request.json()
-    msg = update.get("message") or update.get("edited_message") or {}
-    text = (msg.get("text") or "").strip()
-    chat = msg.get("chat") or {}
-    chat_id = chat.get("id")
-    if not chat_id:
-        return {"ok": True}
-    if text.startswith("/start"):
-        parts = text.split(maxsplit=1)
-        code = parts[1].strip() if len(parts) > 1 else ""
-        if not TELEGRAM_SUBSCRIBE_CODE or not secrets.compare_digest(code, TELEGRAM_SUBSCRIBE_CODE):
-            return {"ok": True}
-        try:
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    """INSERT INTO telegram_subscribers (chat_id, username, first_name)
-                       VALUES ($1, $2, $3)
-                       ON CONFLICT (chat_id) DO UPDATE
-                       SET username=EXCLUDED.username, first_name=EXCLUDED.first_name""",
-                    chat_id, chat.get("username"), chat.get("first_name"),
-                )
-            await _tg_send_to(chat_id, "Подписаны на уведомления о новых заявках на russiangel.ru ✓")
-        except Exception as e:
-            print(f"[tg] /start failed: {e}")
-    elif text.startswith("/stop"):
-        try:
-            async with pool.acquire() as conn:
-                await conn.execute("DELETE FROM telegram_subscribers WHERE chat_id=$1", chat_id)
-            await _tg_send_to(chat_id, "Отписаны от уведомлений.")
-        except Exception as e:
-            print(f"[tg] /stop failed: {e}")
-    return {"ok": True}
+        print(f"[broadcast] failed: {e}")
 
 
 # ─────────────────── Metadata extraction ───────────────────
@@ -301,19 +237,14 @@ async def extract_metadata(session_id: str) -> None:
                 extracted.get("lead_contact"),
             )
         if has_lead_new and not (sess and sess["lead_notified"]):
-            who = extracted.get("business_niche") or "—"
-            name = extracted.get("lead_name") or "—"
-            contact = extracted.get("lead_contact") or "—"
-            product = extracted.get("tariff_interest") or "—"
-            summary = extracted.get("intent_summary") or ""
-            await tg_send(
-                f"🎯 <b>Новая заявка с russiangel.ru</b>\n\n"
-                f"<b>Имя:</b> {name}\n"
-                f"<b>Контакт:</b> {contact}\n"
-                f"<b>Кто:</b> {who}\n"
-                f"<b>Интерес:</b> {product}\n\n"
-                f"<i>{summary}</i>"
-            )
+            await broadcast_lead({
+                "source": "russiangel.ru",
+                "name": extracted.get("lead_name"),
+                "contact": extracted.get("lead_contact"),
+                "niche": extracted.get("business_niche"),
+                "tariff": extracted.get("tariff_interest"),
+                "summary": extracted.get("intent_summary"),
+            })
             async with pool.acquire() as conn:
                 await conn.execute(
                     "UPDATE sessions SET lead_notified=TRUE WHERE session_id=$1", session_id
@@ -467,9 +398,6 @@ async def admin_data(request: Request):
                 COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS week
                FROM sessions"""
         )
-        subs = await conn.fetch(
-            "SELECT chat_id, username, first_name, subscribed_at FROM telegram_subscribers ORDER BY subscribed_at DESC"
-        )
     return {
         "stats": dict(stats) if stats else {},
         "sessions": [
@@ -480,27 +408,7 @@ async def admin_data(request: Request):
             }
             for s in sessions
         ],
-        "telegram_subscribers": len(subs),
-        "subscribers": [
-            {
-                "chat_id": str(s["chat_id"]),
-                "username": s["username"],
-                "first_name": s["first_name"],
-                "subscribed_at": s["subscribed_at"].isoformat() if s["subscribed_at"] else None,
-            }
-            for s in subs
-        ],
     }
-
-
-@app.delete("/admin/subscriber/{chat_id}")
-async def admin_unsubscribe(chat_id: int, request: Request):
-    require_admin(request)
-    if not pool:
-        return JSONResponse({"error": "database not configured"}, status_code=503)
-    async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM telegram_subscribers WHERE chat_id=$1", chat_id)
-    return {"ok": True, "deleted": result.split()[-1] if result else "0"}
 
 
 @app.get("/admin/session/{session_id}")
