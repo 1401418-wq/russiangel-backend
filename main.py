@@ -571,6 +571,6 @@ async def admin_session_detail(session_id: str, request: Request):
 
 # ─────────────────── Public ───────────────────
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"status": "ok", "service": "RussianAngel AI Agent"}
