@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 import httpx
 import os
+import re
 import json
 import uuid
 import base64
@@ -83,6 +84,69 @@ def _validate_chat_messages(messages) -> str | None:
     if total > MAX_TOTAL_CHARS:
         return "conversation too long"
     return None
+
+
+# ─────────────────── Обезличивание ПД перед отправкой за рубеж (152-ФЗ) ───────────────────
+# За границу (Anthropic) уходит только текст с плейсхолдерами вместо ПД.
+# Реальные значения остаются на сервере, ответ обратно un-mask'ается для пользователя.
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_TG_RE = re.compile(r"@[A-Za-z][A-Za-z0-9_]{3,}")
+_PHONE_RE = re.compile(r"\+?[78]?[\s\-()]*\d(?:[\s\-()]*\d){9,10}")
+_NAME_RE = re.compile(r"(меня зовут|мо[её] имя|зовут меня)\s+([А-ЯЁ][а-яё]+)", re.I)
+
+
+def _mask_pii(text: str, mapping: dict) -> str:
+    if not isinstance(text, str):
+        return text
+
+    def _ph(kind: str, val: str) -> str:
+        for ph, v in mapping.items():
+            if v == val:
+                return ph
+        ph = f"[{kind}_{len(mapping) + 1}]"
+        mapping[ph] = val
+        return ph
+
+    text = _EMAIL_RE.sub(lambda m: _ph("EMAIL", m.group(0)), text)
+    text = _TG_RE.sub(lambda m: _ph("TG", m.group(0)), text)
+    text = _PHONE_RE.sub(lambda m: _ph("PHONE", m.group(0)), text)
+    text = _NAME_RE.sub(lambda m: m.group(1) + " " + _ph("NAME", m.group(2)), text)
+    return text
+
+
+def _unmask(text: str, mapping: dict) -> str:
+    for ph, val in mapping.items():
+        text = text.replace(ph, val)
+    return text
+
+
+def _mask_messages(messages: list) -> tuple[list, dict]:
+    """(обезличенные messages, mapping) — для зарубежного LLM."""
+    mapping: dict = {}
+    masked = [
+        {"role": m["role"], "content": _mask_pii(str(m.get("content", "")), mapping)}
+        for m in messages
+    ]
+    return masked, mapping
+
+
+def _extract_contact_local(text: str) -> dict:
+    """Извлекает контакт из текста ЛОКАЛЬНО (без LLM) — чтобы ПД не уходили за рубеж."""
+    phone = _PHONE_RE.search(text)
+    tg = _TG_RE.search(text)
+    email = _EMAIL_RE.search(text)
+    name_m = _NAME_RE.search(text)
+    if phone:
+        contact = phone.group(0).strip()
+    elif tg:
+        contact = tg.group(0).strip()
+    elif email:
+        contact = email.group(0).strip()
+    else:
+        contact = None
+    name = name_m.group(2) if name_m else None
+    return {"name": name, "contact": contact, "has_lead": bool(contact)}
+
 
 SYSTEM = """Ты — умный помощник Ангелины, преподавателя русского языка, известной как "Фея русского языка".
 Отвечай серьёзно, по делу, с правильной пунктуацией. Без лишних эмодзи — максимум 1-2 в сообщении если уместно.
@@ -228,17 +292,14 @@ async def broadcast_lead(payload: dict) -> None:
 
 # ─────────────────── Metadata extraction ───────────────────
 
-EXTRACTION_SYSTEM = """Ты обрабатываешь диалог посетителя сайта Ангелины ("Фея русского языка") с её AI-помощником. Ангелина — преподаватель русского языка, продаёт игры для уроков, курсы для учеников/учителей и репетиторство.
+EXTRACTION_SYSTEM = """Ты обрабатываешь диалог посетителя сайта Ангелины ("Фея русского языка") с её AI-помощником. Ангелина — преподаватель русского языка, продаёт игры для уроков, курсы для учеников/учителей и репетиторство. Контактные данные уже вырезаны и заменены плейсхолдерами вида [NAME_1], [PHONE_2] — не пытайся их угадать.
 
 Извлеки структурированные данные. Верни СТРОГО валидный JSON, без markdown, без комментариев, в одну строку или с переносами. Поля:
 
 {
   "business_niche": кто посетитель — одна из строк ["учитель","ученик/родитель","репетитор","методист","другое","не определено"],
   "tariff_interest": что человек присматривает — одна из ["игры PowerPoint","игры Genially","пакет Сундучок","пакет Сокровище","все материалы","игра на заказ","курс для учеников","курс для учителей","репетиторство","несколько","не определено"],
-  "intent_summary": строка 1-2 предложения, что человек спрашивал и чего хочет,
-  "has_lead": true ТОЛЬКО если человек явно оставил имя И контакт (телефон/telegram/email/whatsapp). Если оставил только имя или только сферу — false.,
-  "lead_name": имя или null,
-  "lead_contact": контакт или null
+  "intent_summary": строка 1-2 предложения, что человек спрашивал и чего хочет
 }"""
 
 
@@ -258,6 +319,12 @@ async def extract_metadata(session_id: str) -> None:
         if not rows:
             return
         transcript = "\n\n".join(f"[{r['role']}] {r['content']}" for r in rows)
+        # Контакт извлекаем ЛОКАЛЬНО (в Claude ПД не уходят)
+        local = _extract_contact_local(transcript)
+        has_lead_new = local["has_lead"]
+        # Нишу/тариф/интент — из Claude по ОБЕЗЛИЧЕННОМУ транскрипту
+        emap: dict = {}
+        masked_transcript = _mask_pii(transcript, emap)
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -270,7 +337,7 @@ async def extract_metadata(session_id: str) -> None:
                     "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 400,
                     "system": EXTRACTION_SYSTEM,
-                    "messages": [{"role": "user", "content": transcript}],
+                    "messages": [{"role": "user", "content": masked_transcript}],
                 },
             )
             data = response.json()
@@ -278,7 +345,7 @@ async def extract_metadata(session_id: str) -> None:
         if text.startswith("```"):
             text = text.strip("`").lstrip("json").strip()
         extracted = json.loads(text)
-        has_lead_new = bool(extracted.get("has_lead"))
+        intent_summary = _unmask(extracted.get("intent_summary") or "", emap)
         async with pool.acquire() as conn:
             await conn.execute(
                 """UPDATE sessions SET
@@ -288,19 +355,19 @@ async def extract_metadata(session_id: str) -> None:
                 session_id,
                 extracted.get("business_niche") or "не определено",
                 extracted.get("tariff_interest") or "не определено",
-                extracted.get("intent_summary"),
+                intent_summary,
                 has_lead_new,
-                extracted.get("lead_name"),
-                extracted.get("lead_contact"),
+                local["name"],
+                local["contact"],
             )
         if has_lead_new and not (sess and sess["lead_notified"]):
             await broadcast_lead({
                 "source": "russiangel.ru",
-                "name": extracted.get("lead_name"),
-                "contact": extracted.get("lead_contact"),
+                "name": local["name"],
+                "contact": local["contact"],
                 "niche": extracted.get("business_niche"),
                 "tariff": extracted.get("tariff_interest"),
-                "summary": extracted.get("intent_summary"),
+                "summary": intent_summary,
             })
             async with pool.acquire() as conn:
                 await conn.execute(
@@ -356,6 +423,9 @@ async def chat(request: Request):
         except Exception as e:
             print(f"[chat] db log user msg failed: {e}")
 
+    # Обезличиваем перед отправкой за рубеж (Anthropic, США): ПД → плейсхолдеры
+    masked_messages, pii_map = _mask_messages(messages)
+
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
@@ -375,7 +445,7 @@ async def chat(request: Request):
                             "cache_control": {"type": "ephemeral"},
                         }
                     ],
-                    "messages": messages,
+                    "messages": masked_messages,
                 },
             )
             data = response.json()
@@ -392,6 +462,9 @@ async def chat(request: Request):
     if not reply:
         print(f"[chat] empty reply, raw={data}")
         return JSONResponse({"error": "empty reply from model"}, status_code=502)
+
+    # Возвращаем настоящие значения в ответ пользователю (Claude их не видел)
+    reply = _unmask(reply, pii_map)
 
     usage = data.get("usage") or {}
 
