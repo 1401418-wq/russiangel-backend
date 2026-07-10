@@ -46,6 +46,9 @@ MAX_TOTAL_CHARS = 24000
 
 
 def _client_ip(request: Request) -> str:
+    xr = request.headers.get("x-real-ip", "").strip()
+    if xr:
+        return xr
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
         return xff.split(",")[0].strip()
@@ -91,7 +94,7 @@ def _validate_chat_messages(messages) -> str | None:
 # Реальные значения остаются на сервере, ответ обратно un-mask'ается для пользователя.
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _TG_RE = re.compile(r"@[A-Za-z][A-Za-z0-9_]{3,}")
-_PHONE_RE = re.compile(r"\+?[78]?[\s\-()]*\d(?:[\s\-()]*\d){9,10}")
+_PHONE_RE = re.compile(r"\+?[78]?[\s\-().]*\d(?:[\s\-().]*\d){9,10}")
 _NAME_RE = re.compile(r"(меня зовут|мо[её] имя|зовут меня)\s+([А-ЯЁ][а-яё]+)", re.I)
 
 
@@ -423,8 +426,24 @@ async def chat(request: Request):
         except Exception as e:
             print(f"[chat] db log user msg failed: {e}")
 
+    # Серверная история: реплики берём из БД по session_id (клиентские assistant-турны не
+    # доверяем — их можно подделать для инъекции). Клиентский messages — fallback если БД недоступна.
+    history = messages
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT role, content FROM (SELECT id, role, content FROM messages "
+                    "WHERE session_id=$1 ORDER BY id DESC LIMIT 40) t ORDER BY id",
+                    session_id,
+                )
+            if rows:
+                history = [{"role": r["role"], "content": r["content"]} for r in rows]
+        except Exception as e:
+            print(f"[chat] db history fetch failed: {e}")
+
     # Обезличиваем перед отправкой за рубеж (Anthropic, США): ПД → плейсхолдеры
-    masked_messages, pii_map = _mask_messages(messages)
+    masked_messages, pii_map = _mask_messages(history)
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -450,7 +469,8 @@ async def chat(request: Request):
             )
             data = response.json()
     except httpx.HTTPError as e:
-        return JSONResponse({"error": f"upstream request failed: {e}"}, status_code=502)
+        print(f"[chat] upstream failed: {e}")
+        return JSONResponse({"error": "upstream request failed"}, status_code=502)
 
     if "error" in data:
         print(f"[chat] upstream error: {data['error']}")
