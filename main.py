@@ -264,6 +264,7 @@ async def startup() -> None:
         async with pool.acquire() as conn:
             await conn.execute(SCHEMA_SQL)
         print("[startup] DB pool ready, schema applied")
+        asyncio.create_task(_cleanup_old_data())
     except Exception as e:
         print(f"[startup] DB init failed: {e}")
         pool = None
@@ -273,6 +274,23 @@ async def startup() -> None:
 async def shutdown() -> None:
     if pool:
         await pool.close()
+
+
+RETENTION_DAYS = 30
+
+
+async def _cleanup_old_data() -> None:
+    # Не храним переписку дольше нужного для контекста: чистим messages и
+    # не-лид sessions старше RETENTION_DAYS. Лиды (has_lead) сохраняем.
+    while True:
+        try:
+            if pool:
+                async with pool.acquire() as conn:
+                    await conn.execute(f"DELETE FROM messages WHERE created_at < now() - interval '{RETENTION_DAYS} days'")
+                    await conn.execute(f"DELETE FROM sessions WHERE created_at < now() - interval '{RETENTION_DAYS} days' AND has_lead = FALSE")
+        except Exception as e:
+            print(f"[cleanup] failed: {e}")
+        await asyncio.sleep(86400)
 
 
 # ─────────────────── Broadcast to family bot ───────────────────
